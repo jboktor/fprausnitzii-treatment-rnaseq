@@ -47,6 +47,7 @@ library(enrichplot)
 library(org.Mm.eg.db)
 library(AnnotationDbi)
 library(ggpubr)
+library(vegan)
 
 homedir <- "/central/groups/MazmanianLab/joeB"
 wkdir <- glue("{homedir}/RNASEQ/fprau_bulk")
@@ -144,7 +145,6 @@ Running DESeq2 will perform the following key steps:
 
 - Negative Binomial GLM fitting and Wald statistic
 
-
 ```{r, eval = FALSE}
 dds_mb <- DESeq(dds_mb)
 dds_mb
@@ -213,7 +213,6 @@ plot_pval_hist <- function(res) {
     ggtitle(title)
 }
 
-
 plot_volcano <- function(res) {
     title <- res@elementMetadata$description[5]
 
@@ -256,6 +255,9 @@ plot_volcano <- function(res) {
         theme(legend.position = "bottom") +
         theme(plot.title = element_text(hjust = 0.5)) +
         labs(color = NULL, y = expression(-log[10](padj)), x = expression(log[2](Fold~Change))) +
+        geom_hline(yintercept = -log10(0.05), linetype = "dotted") +
+        geom_vline(xintercept = 0.2, linetype = "dotted") +
+        geom_vline(xintercept = -0.2, linetype = "dotted") +
         # Add ggrepel labels for top genes
         ggrepel::geom_text_repel(
             data = top_genes,
@@ -277,6 +279,38 @@ plot_volcano <- function(res) {
             segment.ncp = 3, # Number of control points (higher = smoother curves)
             segment.angle = 10 # Angle of the curve
         )
+}
+
+#' To run in parallel with plotPCA - 
+#' designed to copy default filtering of DESeq2::plotPCA
+#' 
+#' @param vsd DESeq2::vst object
+#' @param intgroup column name in colData(vsd) to use for grouping
+#' @param ntop number of top variable genes to use
+#' @param method distance method for PERMANOVA
+#' @param nperm number of permutations for PERMANOVA
+
+run_adonis <- function(vsd, intgroup = "group", ntop = 500, method = "euclidean", nperm = 9999) {
+  # Get top variable genes
+  rv <- rowVars(assay(vsd))
+  select <- order(rv, decreasing = TRUE)[seq_len(min(ntop, length(rv)))]
+
+  # Transpose expression matrix (samples × genes)
+  expr_mat <- t(assay(vsd)[select, ])
+
+  # Extract metadata
+  if (!intgroup %in% colnames(colData(vsd))) {
+    stop("intgroup must be a column in colData(vsd)")
+  }
+  meta <- as.data.frame(colData(vsd)[, intgroup, drop = FALSE])
+  colnames(meta) <- "Group"  # simplify formula building
+
+  # Run PERMANOVA
+  adonis2_result <- vegan::adonis2(
+    expr_mat ~ Group, data = meta, method = method, permutations = nperm
+    )
+
+  return(adonis2_result)
 }
 
 ```
@@ -315,26 +349,58 @@ ggsave(p_hist_gi_patch,
 - P-value distributions are robust for Large Intestine, but not for Mid Brain - which seem to point towards a null hypothesis.
 
 
-
 ### Dimension Reduction - PCA
 
 ```{r, eval = FALSE}
 vsd_mb <- vst(dds_mb, blind=FALSE)
 vsd_gi <- vst(dds_gi, blind=FALSE)
 
-p_pca_mb <- plotPCA(vsd_mb, intgroup=c("group")) +
+adonis_mb <- run_adonis(vsd_mb)
+adonis_gi <- run_adonis(vsd_gi)
+
+# DESeq2::plotPCA(vsd_mb, intgroup=c("group")) # viewing explained variance numbers
+
+p_pca_mb <- DESeq2::plotPCA(vsd_mb, intgroup=c("group"), returnData = TRUE) %>% 
+  ggplot(aes(x = PC1, y = PC2, color = group)) +
+  geom_point(size = 3) +
   theme_bw() +
   coord_fixed() +
   ggtitle("Mid Brain") +
+  labs(x = "PC1: 28% variance", y = "PC2: 13% variance", color = NULL) +
+  stat_ellipse(geom="polygon", level=0.95, alpha=0) +
+  annotate(
+    "text",
+    x = Inf, y = 0,         # right side, center vertically
+    hjust = 1.3, vjust = - 3.5, size = 3,
+    label = glue(
+      "PERMANOVA\nR² = {round(adonis_mb$R2[1], 2)}\n",
+      "p = {formatC(adonis_mb$`Pr(>F)`[1], format = 'e', digits = 2)}"
+    )
+  ) +
   scale_color_manual(
     values = c("ASO Vehicle" = "#A6CEE3", "ASO Fp" = "#1F78B4", "WT Vehicle" = "#B2DF8A"),
     limits = c("ASO Vehicle", "ASO Fp", "WT Vehicle")
   )
 
-p_pca_gi <- plotPCA(vsd_gi, intgroup=c("group")) +
+# BiocGenerics::plotPCA(vsd_gi, intgroup=c("group")) # viewing explained variance numbers
+
+p_pca_gi <- plotPCA(vsd_gi, intgroup=c("group"), returnData = TRUE) %>% 
+  ggplot(aes(x = PC1, y = PC2, color = group)) +
+  geom_point(size = 3) +
   theme_bw() +
   coord_fixed() +
+  labs(x = "PC1: 18% variance", y = "PC2: 11% variance", color = NULL) +
   ggtitle("Large Intestine") +
+  stat_ellipse(geom="polygon", level=0.95, alpha=0) +
+  annotate(
+    "text",
+    x = Inf, y = 0,         # right side, center vertically
+    hjust = 1.3, vjust = - 3.5, size = 3,
+    label = glue(
+      "PERMANOVA\nR² = {round(adonis_gi$R2[1], 2)}\n",
+      "p = {formatC(adonis_gi$`Pr(>F)`[1], format = 'e', digits = 2)}"
+    )
+  ) +
   scale_color_manual(
     values = c("ASO Vehicle" = "#A6CEE3", "ASO Fp" = "#1F78B4", "WT Vehicle" = "#B2DF8A"),
     limits = c("ASO Vehicle", "ASO Fp", "WT Vehicle")
@@ -346,6 +412,49 @@ ggsave(p_pca_gi,
   filename = glue("{fig_dir}/deseq2_gi_pca.png"), width = 6, height = 5)
 
 ```
+
+
+
+**Results for PERMANOVA**
+
+
+```{r}
+# - Mid Brain
+
+# Permutation test for adonis under reduced model
+# Terms added sequentially (first to last)
+# Permutation: free
+# Number of permutations: 9999
+
+# vegan::adonis2(formula = expr_mat ~ Group, data = meta, permutations = nperm, method = method)
+#          Df SumOfSqs      R2      F Pr(>F)  
+# Group     2    742.1 0.21935 1.6859  0.025 *
+# Residual 12   2641.1 0.78065                
+# Total    14   3383.2 1.00000                
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+
+
+# - Large Intestine
+
+# Permutation test for adonis under reduced model
+# Terms added sequentially (first to last)
+# Permutation: free
+# Number of permutations: 9999
+
+# vegan::adonis2(formula = expr_mat ~ Group, data = meta, permutations = nperm, method = method)
+#          Df SumOfSqs      R2      F Pr(>F)    
+# Group     2   1242.5 0.18193 1.8903  3e-04 ***
+# Residual 17   5586.8 0.81807                  
+# Total    19   6829.3 1.00000                  
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+
+```
+
+
 
 
 ![Mid Brain PCA](../figures/deseq2_mb_pca.png){width="95%"}
@@ -399,6 +508,80 @@ for (comp in names(res_gi)) {
 
 ![Large Intestine: ASO Fp vs ASO Vehicle](../figures/DESeq2_VolcanoPlots/GI_volcano_ASO_Fp_vs_ASO_Vehicle.png)
 :::
+
+
+
+Heatmap to visualize differences between conditions for main DEGS between ASO Fp vs ASO Vehicle and WT Vehicle vs ASO Vehicle
+
+```{r}
+library(DESeq2)
+library(dplyr)
+library(pheatmap)
+library(viridis)
+library(RColorBrewer)
+
+# select_genes <- order(rowMeans(counts(dds_gi, normalized=TRUE)),
+#                 decreasing=TRUE)[1:40]
+
+heatmap_meta <- as.data.frame(colData(dds_gi)[,c("group", "genotype")])
+
+# pheatmap(assay(dds_gi)[select_genes,],
+#   cluster_rows=TRUE,
+#   show_rownames=TRUE,
+#   cluster_cols=TRUE,
+#   annotation_col=heatmap_meta
+#   )
+
+
+# 1. Get top 25 DE genes from specific contrast
+top_genes <- res_gi[["ASO_Fp_vs_ASO_Vehicle"]] %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("gene_id") %>%
+  arrange(padj) %>%
+  filter(!is.na(padj)) %>%
+  slice_head(n = 25) %>%
+  pull(gene_id)
+
+# 2. Replace Ensembl IDs with gene symbols
+gene_map_clean <- gene_map %>%
+  mutate(gene_id = sub("\\..*", "", gene_id))  # Remove version suffix
+top_genes_clean <- sub("\\..*", "", top_genes)
+gene_symbols <- gene_map_clean %>%
+  filter(gene_id %in% top_genes_clean) %>%
+  distinct(gene_id, gene_name)
+# Ensure rownames match the matrix rownames
+mat <- assay(dds_gi)[top_genes, ] %>% log1p()  # 2. log-scale
+# 1. Rename rownames to gene symbols
+rownames(mat) <- gene_symbols$gene_name[match(sub("\\..*", "", rownames(mat)), gene_symbols$gene_id)]
+
+# Define custom annotation colors
+annotation_colors <- list(
+  genotype = setNames(brewer.pal(length(unique(heatmap_meta$genotype)), "Paired"),
+                      unique(heatmap_meta$genotype)),
+  group = setNames(viridis(length(unique(heatmap_meta$group)), option = "E"),  # D is default viridis
+                   unique(heatmap_meta$group))
+)
+
+# Plot with magma color scale
+# breaks <- pretty(range(mat), n = 5)
+
+pheat <- pheatmap(
+  mat,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  show_rownames = TRUE,
+  annotation_col = heatmap_meta,
+  annotation_colors = annotation_colors,
+  color = viridis::viridis(100, option = "mako")
+)
+
+
+ggsave(pheat, filename = glue("{fig_dir}/heatmap_gi_top_genes.png"), width = 7, height = 5.5)
+
+```
+
+
+
 
 
 Visualzing similarities in gene expression shifts between conditions
