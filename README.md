@@ -7,7 +7,9 @@ This repository contains the analysis of Bulk RNA-Seq data from alpha-synuclein 
 
 ### Data Organization
 - `data/input/`: Contains raw input data files
-  - Raw count matrices
+  - Bash script to generate gene-level counts from fastq files, including interim QC steps
+  - Python script to generate raw count matrix
+  - Raw count matrix
   - Sample metadata
 - `data/interim/`: Intermediate processed data files
 - `data/results/`: Final processed data tables and results
