@@ -1,0 +1,28 @@
+/* Make the main content area wider and centered */
+#quarto-content {
+  max-width: 1800px !important;
+  width: 95vw !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Make code blocks and figures use the full width */
+div.sourceCode, pre, .cell-output-display, .cell-output {
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+/* Optionally, make tables wider */
+table.dataframe, .table {
+  max-width: 100% !important;
+  width: 100% !important;
+  overflow-x: auto;
+}
+
+/* Sidebar stays flush left, but don't force a width */
+#quarto-sidebar-toc-left, #quarto-sidebar, .sidebar {
+  max-width: 220px !important;
+  min-width: 180px !important;
+  width: auto !important;
+  margin-left: 0 !important;
+}

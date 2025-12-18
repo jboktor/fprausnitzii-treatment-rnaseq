@@ -17,12 +17,19 @@ run_GO_enrich <- function(res,
                           lfc = 1, # abs(log2FC) threshold
                           ont = "BP", # GO ontology
                           top_n = 20, # terms to show
+                          log2fc_direction = "up", # "up" or "down"
                           plot_file = "GO_dotplot.pdf") {
     
     ## filter significant DEGs -------------------------------------
     sig <- as.data.frame(res) |>
         tibble::rownames_to_column("ensembl") |>
         dplyr::filter(!is.na(padj), padj < alpha, abs(log2FoldChange) > lfc)
+    
+    if (log2fc_direction == "up") {
+        sig <- sig %>% filter(log2FoldChange > 0)
+    } else if (log2fc_direction == "down") {
+        sig <- sig %>% filter(log2FoldChange < 0)
+    }
 
     if (nrow(sig) < 10) {
         stop("Fewer than 10 significant genes – enrichment not meaningful.")
