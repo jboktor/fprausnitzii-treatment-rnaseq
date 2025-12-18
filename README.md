@@ -19,12 +19,6 @@ This repository contains the analysis of Bulk RNA-Seq data from alpha-synuclein 
 - `notebook/R_scripts/`: Additional R scripts for specific analyses
   - `quick_enrich.R`: Script for quick enrichment analysis
 
-### Results and Visualizations
-- `figures/`: Contains all generated figures
-  - `DESeq2_VolcanoPlots/`: Differential expression volcano plots
-  - `GO_enrichment/`: Gene Ontology enrichment analysis plots
-  - PCA plots and other visualizations
-
 ## Analysis Overview
 The analysis pipeline includes:
 1. Quality control and preprocessing of raw RNA-Seq data

@@ -15,7 +15,7 @@ format:
     toc-location: left
     toc-title: "Contents"
     toc-depth: 3
-    css: wide.css   # <--- Add this line
+    css: wide.css
 ---
 
 **Overview**
